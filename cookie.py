@@ -42,29 +42,32 @@ class SunoCookie:
         self.token = token
 
     def update_token(self):
-        headers = {"cookie": self.get_cookie()}
-        headers.update(COMMON_HEADERS)
-        session_id = self.get_session_id()
-        renew_url = (
-            f"https://clerk.suno.ai/v1/client/sessions/{session_id}/"
-            "tokens?_clerk_js_version=4.70.5"
-        )
+        try:
+            headers = {"cookie": self.get_cookie()}
+            headers.update(COMMON_HEADERS)
+            session_id = self.get_session_id()
+            renew_url = (
+                f"https://clerk.suno.com/v1/client/sessions/{session_id}/"
+                "tokens?_clerk_js_version=4.72.0"
+            )
 
-        resp = requests.post(
-            url=renew_url,
-            headers=headers
-        )
-        print(resp.json(), resp.headers)
+            resp = requests.post(
+                url=renew_url,
+                headers=headers
+            )
+            # print(resp.json(), resp.headers)
 
-        resp_headers = dict(resp.headers)
-        set_cookie = resp_headers.get("Set-Cookie")
-        self.load_cookie(set_cookie)
-        token = resp.json().get("jwt")
-        self.set_token(token)
-        logger.info(f'Suno token updated -> {self.token}.')
-        # print(set_cookie)
-        # print(f"*** token -> {token} ***")
-        return self.token
+            resp_headers = dict(resp.headers)
+            set_cookie = resp_headers.get("Set-Cookie")
+            self.load_cookie(set_cookie)
+            token = resp.json().get("jwt")
+            self.set_token(token)
+            logger.info(f'Suno token updated -> {self.token}.')
+            # print(set_cookie)
+            # print(f"*** token -> {token} ***")
+            return self.token
+        except Exception as e:
+            logger.error(e, exc_info=True)
 
 
 suno_auth = SunoCookie(
