@@ -1,18 +1,17 @@
 # -*- coding:utf-8 -*-
-import aiohttp
 import uvicorn
 
 from fastapi import FastAPI, HTTPException, status, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import cfg
 from utils import (
-    generate_music, get_credits, get_feed, generate_lyrics, get_lyrics,
-    get_s3_credentials, finish_upload, get_upload_status, initialize_clip
+    generate_music, get_credits, get_feed, generate_lyrics, get_lyrics
 )
 from deps import get_token
 
 import schemas
+from services.uploader import speed_sender, get_upload_status, get_s3_credentials, \
+    finish_upload, initialize_clip
 
 app = FastAPI()
 
@@ -42,153 +41,29 @@ async def get_upload_by_id(upload_id: str, token: str = Depends(get_token)):
         )
 
 
-async def stream_upload(url: str):
-    print('stream uploader', url)
-    timeout = aiohttp.ClientTimeout(total=cfg.session_timeout)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.get(url) as resp:
-            print(cfg.chunk_size)
-            async for chunk in resp.content.iter_chunked(cfg.chunk_size):
-                # print(chunk)
-                yield chunk
-
-
-async def speed_sender(stream_url: str, upload_url: str, credentials: dict):
-    print('stream_url', stream_url)
-    print('upload_url', upload_url)
-
-    s3_headers = {
-        'User-Agent': (
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-            'AppleWebKit/537.36 (KHTML, like Gecko) '
-            'Chrome/123.0.0.0 Safari/537.36'
-        ),
-        "Referer": "https://suno.com/",
-        "Origin": "https://suno.com",
-    }
-
-    data = aiohttp.FormData()
-    for k, v in credentials.items():
-        data.add_field(k, v)
-
-    file = b''
-    async for chunk in stream_upload(stream_url):
-        file += chunk
-    data.add_field('file', file)
-
-    async with aiohttp.ClientSession() as session:
-        resp = await session.post(upload_url, data=data, headers=s3_headers)
-        print(resp)
-        print(resp.status)
-    if resp.status == 204:
-        return True
-
-    return False
-
-
 @app.post("/uploads/")
 async def uploads(stream_url: str, token: str = Depends(get_token)):
-    # Добавить обработку ошибок
+    # добавить обработку ошибок
+    # добавить конветацию аудио ['m4r', 'ogg']
+
     try:
+        print('1')
         resp = await get_s3_credentials(stream_url, token=token)  # init upload
+        print('2')
         upload_id, upload_url, credentials = resp['id'], resp['url'], resp['fields']
-        await speed_sender(stream_url, upload_url, credentials=credentials) # upload
-        await finish_upload(stream_url, upload_id=upload_id, token=token)  # finish
-        resp = await initialize_clip(upload_id=upload_id, token=token)  # initialize
-        return resp
+        await speed_sender(stream_url, upload_url, credentials=credentials)  # upload
+        print('3')
+        await finish_upload(stream_url, upload_id, token=token)  # finish
+        print('4')
+        await get_upload_status(upload_id, token=token)  # get status upload
+        print('5')
+        return await initialize_clip(upload_id, token=token)  # initialize
+        print('finish')
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
-
-# @app.post("/uploads")
-# async def uploads(image: UploadFile = File(...), token: str = Depends(get_token)):
-#     print(image, type(image))
-#     print(image.file)
-#
-#     # get credentials
-#     file_ext = "mp3"
-#     payload = {"extension": file_ext}
-#     try:
-#         resp = await get_s3_credentials(data=payload, token=token)
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail=str(e)
-#         )
-#
-#     # upload on s3 cloud
-#     print(resp, type(resp))
-#     upload_id = resp.get("id")
-#     url = resp.get("url")
-#     print("url:", url)
-#
-#     print("upload_id:", upload_id)
-#     payload = dict(resp.get("fields"))
-#     payload['file'] = await image.read()
-#
-#     try:
-#         is_uploaded = await upload_to_s3(url, form_data=payload)
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail=str(e)
-#         )
-#
-#     print("is_uploaded", is_uploaded)
-#
-#     # finish upload
-#     payload = {
-#         "upload_type": "file_upload",
-#         "upload_filename": image.filename
-#     }
-#     try:
-#         resp = await finish_upload(data=payload, upload_id=upload_id, token=token)
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail=str(e)
-#         )
-#
-#     print('finish upload:', resp)
-#
-#     # get status
-#     retry = 5
-#     upload_status = None
-#     while retry:
-#         try:
-#             resp = await get_upload_status(upload_id=upload_id, token=token)
-#             upload_status = resp.get("status")
-#             if upload_status == 'complete':
-#                 break
-#         except Exception as e:
-#             raise HTTPException(
-#                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#                 detail=str(e)
-#             )
-#
-#         print(upload_status)
-#         retry -= 1
-#         await asyncio.sleep(1)
-#
-#     if upload_status != 'complete':
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail=upload_status
-#         )
-#
-#     print('get_status:', resp)
-#
-#     # Initialize clip
-#     try:
-#         resp = await initialize_clip(upload_id=upload_id, token=token)
-#         return resp
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail=str(e)
-#         )
 
 
 @app.post("/generate")
@@ -268,5 +143,5 @@ if __name__ == "__main__":
         app='main:app',
         host='0.0.0.0',
         port=8000,
-        reload=True
+        reload=True,
     )

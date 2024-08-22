@@ -1,7 +1,5 @@
-import asyncio
 import logging
-import posixpath
-import urllib
+import sys
 
 from typing import Dict
 
@@ -10,10 +8,9 @@ import json
 import aiohttp
 from dotenv import load_dotenv
 
-from config import cfg
-
 load_dotenv()
 
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 BASE_URL = os.getenv("BASE_URL")
@@ -37,7 +34,7 @@ async def fetch(url: str, headers=None, data=None, method="POST"):
     if data is not None:
         data = json.dumps(data)
 
-    logger.info(data, method, headers, url)
+    logger.info('%s, %s, %s, %s', data, method, headers, url)
 
     async with aiohttp.ClientSession() as session:
         try:
@@ -65,70 +62,6 @@ async def generate_music(data: Dict, token: str):
     api_url = f"{BASE_URL}/api/generate/v2/"
     response = await fetch(api_url, headers, data)
     return response
-
-
-def get_file_info(url: str):
-    parse_obj = urllib.parse.urlparse(url)
-    file_name = posixpath.basename(parse_obj.path)
-    return posixpath.splitext(file_name)
-
-
-async def get_s3_credentials(stream_url: str, token: str) -> Dict:
-    headers = {
-        "Authorization": f"Bearer {token}"
-    }
-    f_name, ext = get_file_info(stream_url)
-    data = {"extension": ext.strip(".")}
-    api_url = f"{BASE_URL}/api/uploads/audio/"
-    logger.debug("Stage_1: Getting S3 credentials: %s%s", f_name, ext)
-    return await fetch(api_url, headers, data)
-
-
-async def finish_upload(stream_url: str, upload_id: str, token: str):
-    headers = {"Authorization": f"Bearer {token}"}
-    api_url = f"{BASE_URL}/api/uploads/audio/{upload_id}/upload-finish/"
-
-    data = {
-        "upload_type": "file_upload",
-        "upload_filename": get_file_info(stream_url)[0],
-    }
-
-    resp = await fetch(api_url, headers, data)
-    print('get_upload_status response:', resp, api_url)
-    return resp
-
-
-async def get_upload_status(upload_id: str, token: str):
-    headers = {"Authorization": f"Bearer {token}"}
-    api_url = f"{BASE_URL}/api/uploads/audio/{upload_id}"
-
-    upload_status = None
-    retry = cfg.retry_status
-    delay = cfg.delay
-
-    while retry:
-        resp = await fetch(api_url, headers, method="GET")
-        upload_status = resp.get('status')
-        if upload_status == 'complete':
-            break
-
-        print(upload_status)
-        retry -= 1
-        await asyncio.sleep(delay)
-
-    if upload_status != 'complete':
-        raise Exception
-
-    print('get_upload_status response:', resp, api_url)
-    return resp
-
-
-async def initialize_clip(upload_id: str, token: str):
-    headers = {"Authorization": f"Bearer {token}"}
-    api_url = f"{BASE_URL}/api/uploads/audio/{upload_id}/initialize-clip/"
-    resp = await fetch(api_url, headers)
-    print('initialize_clip:', resp, api_url, upload_id)
-    return resp
 
 
 async def generate_lyrics(prompt, token):
