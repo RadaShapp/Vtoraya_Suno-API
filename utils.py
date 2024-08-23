@@ -1,6 +1,6 @@
 import logging
-import sys
-
+import posixpath
+import urllib
 from typing import Dict
 
 import os
@@ -98,3 +98,10 @@ async def get_credits(token: str):
     }
     api_url = f"{BASE_URL}/api/billing/info/"
     return await fetch(api_url, headers, method="GET")
+
+
+def get_file_info(url: str):
+    """Раздеяет URL на имя файла и расширение."""
+    parse_obj = urllib.parse.urlparse(url)
+    file_name = posixpath.basename(parse_obj.path)
+    return posixpath.splitext(file_name)

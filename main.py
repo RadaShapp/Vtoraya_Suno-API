@@ -43,22 +43,13 @@ async def get_upload_by_id(upload_id: str, token: str = Depends(get_token)):
 
 @app.post("/uploads/")
 async def uploads(stream_url: str, token: str = Depends(get_token)):
-    # добавить обработку ошибок
-    # добавить конветацию аудио ['m4r', 'ogg']
-
     try:
-        print('1')
         resp = await get_s3_credentials(stream_url, token=token)  # init upload
-        print('2')
         upload_id, upload_url, credentials = resp['id'], resp['url'], resp['fields']
         await speed_sender(stream_url, upload_url, credentials=credentials)  # upload
-        print('3')
         await finish_upload(stream_url, upload_id, token=token)  # finish
-        print('4')
         await get_upload_status(upload_id, token=token)  # get status upload
-        print('5')
         return await initialize_clip(upload_id, token=token)  # initialize
-        print('finish')
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -1,16 +1,14 @@
 import asyncio
 import logging
-import posixpath
-import urllib
 from typing import Dict
 from fastapi.concurrency import run_in_threadpool
 import aiohttp
 
 from config import cfg
 from execption import UploaderS3Error, UploaderGetStatusError, \
-    UploaderFileExtensionError
+    UploaderFileExtensionError, IncorrectStream
 from services.coverter import StreamLister
-from utils import BASE_URL, fetch
+from utils import BASE_URL, fetch, get_file_info
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -66,8 +64,6 @@ async def speed_sender(stream_url: str, upload_url: str, credentials: dict):
         stream_in += chunk
 
     stream_listener = StreamLister(stream_url)
-    # stream_out = stream_listener(file)
-    # stream_out = await asyncio.to_thread(stream_listener, stream_in)
     stream_out = await run_in_threadpool(stream_listener, stream_in)
 
     data.add_field('file', stream_out)
@@ -109,16 +105,23 @@ async def get_upload_status(upload_id: str, token: str):
 
     if upload_status != 'complete':
         logger.error("Stage_4: upload status: %s", upload_status)
-        raise UploaderGetStatusError('Get upload status failed')
+        raise UploaderGetStatusError('Get upload status failed: %s', upload_status)
 
     logger.info('Stage_4: get_upload_status: %s', upload_status)
 
 
-def get_file_info(url: str):
-    """Раздеяет URL на имя файла и расширение."""
-    parse_obj = urllib.parse.urlparse(url)
-    file_name = posixpath.basename(parse_obj.path)
-    return posixpath.splitext(file_name)
+def init_upload_file(stream_url: str):
+    """Изменят расширение файла."""
+    f_name, ext = get_file_info(stream_url)
+    ext = ext.strip(".")
+    if ext not in cfg.file_ext:
+        logger.error('Incorrect file extension: %s', ext)
+        raise IncorrectStream('Incorrect file extension %s', ext)
+
+    if ext in cfg.converted_audio_format:
+        logger.info('file extension: %s -> %s', ext, cfg.default_audio_format)
+        ext = cfg.default_audio_format
+    return f_name, ext
 
 
 async def get_s3_credentials(stream_url: str, token: str) -> Dict:
@@ -126,12 +129,11 @@ async def get_s3_credentials(stream_url: str, token: str) -> Dict:
 
     Функция получает загрузочные данные и url для загрузки в S3 хранилище.
     """
-
     headers = {
         "Authorization": f"Bearer {token}"
     }
-    f_name, ext = get_file_info(stream_url)
-    data = {"extension": ext.strip(".")}
+    f_name, ext = init_upload_file(stream_url)
+    data = {"extension": ext}
     api_url = f"{BASE_URL}/api/uploads/audio/"
 
     logger.info("Stage_1: Getting S3 credentials: %s%s", f_name, ext)
