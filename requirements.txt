@@ -6,3 +6,4 @@ pydantic~=2.8.2
 requests~=2.32.3
 
 pydub~=0.25.1
+python-multipart~=0.0.9
