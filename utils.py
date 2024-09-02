@@ -1,4 +1,6 @@
 import logging
+import posixpath
+import urllib
 from typing import Dict
 
 import os
@@ -8,6 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 BASE_URL = os.getenv("BASE_URL")
@@ -31,12 +34,12 @@ async def fetch(url: str, headers=None, data=None, method="POST"):
     if data is not None:
         data = json.dumps(data)
 
-    logger.info(data, method, headers, url)
+    logger.info('%s, %s, %s, %s', data, method, headers, url)
 
     async with aiohttp.ClientSession() as session:
         try:
             async with session.request(
-                method=method, url=url, data=data, headers=headers
+                    method=method, url=url, data=data, headers=headers
             ) as resp:
                 return await resp.json()
         except Exception as e:
@@ -79,11 +82,11 @@ async def get_lyrics(lid, token):
 
 
 async def custom_generate(
-    prompt: str,
-    tags: str,
-    title: str,
-    make_instrumental: bool = False,
-    wait_audio: bool = False,
+        prompt: str,
+        tags: str,
+        title: str,
+        make_instrumental: bool = False,
+        wait_audio: bool = False,
 ):
     """Настраиваемая генерация музыки."""
     pass
@@ -95,3 +98,10 @@ async def get_credits(token: str):
     }
     api_url = f"{BASE_URL}/api/billing/info/"
     return await fetch(api_url, headers, method="GET")
+
+
+def get_file_info(url: str):
+    """Раздеяет URL на имя файла и расширение."""
+    parse_obj = urllib.parse.urlparse(url)
+    file_name = posixpath.basename(parse_obj.path)
+    return posixpath.splitext(file_name)
